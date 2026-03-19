@@ -97,6 +97,18 @@ const (
 	`
 )
 
+// Cache TTL constants (in seconds) - mirror Laravel config values
+const (
+	// ServiceTokenTTL is the cache duration for service tokens (~55 minutes)
+	ServiceTokenTTL = 3300
+	// ServiceUUIDTTL is the cache duration for service UUID lookups (24 hours)
+	ServiceUUIDTTL = 86400
+	// DefaultServiceTokenCacheTTL is the default cache time for service tokens from env variable
+	DefaultServiceTokenCacheTTL = "SERVICE_TOKEN_CACHE_TTL"
+	// DefaultServiceUUIDCacheTTL is the default cache time for service UUID from env variable
+	DefaultServiceUUIDCacheTTL = "SERVICE_UUID_CACHE_TTL"
+)
+
 // GenerateToken generates a service token using client credentials
 func (c *ServiceClient) GenerateToken() (string, error) {
 	if c.config.ClientID == "" {

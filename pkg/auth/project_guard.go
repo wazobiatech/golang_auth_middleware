@@ -293,50 +293,72 @@ func (p *ProjectAuthMiddleware) validateToken(token string) (*TokenValidationRes
 	}
 }
 
-// validatePlatformToken validates platform token structure and revocation
-func (p *ProjectAuthMiddleware) validatePlatformToken(claims jwt.MapClaims) (*TokenValidationResult, error) {
-	// Validate structure
-	tenantID, ok1 := claims["tenant_id"].(string)
-	tokenID, ok2 := claims["token_id"].(string)
+// validatePlatformToken validates platform token structure and checks for revocation
+func (p *ProjectAuthMiddleware) validatePlatformToken(token *jwt.Token) (*types.PlatformTokenPayload, error) {
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("invalid token claims")
+	}
+
+	payload := &types.PlatformTokenPayload{}
 	
-	if !ok1 || !ok2 || tenantID == "" || tokenID == "" {
-		return &TokenValidationResult{
-			IsValid: false,
-			Error:   "invalid platform token structure",
-		}, nil
+	// Extract claims
+	if tenantID, ok := claims["tenant_id"].(string); ok {
+		payload.TenantID = tenantID
+	}
+	
+	if secretVersion, ok := claims["secret_version"].(float64); ok {
+		payload.SecretVersion = int(secretVersion)
+	}
+	
+	if tokenID, ok := claims["token_id"].(string); ok {
+		payload.TokenID = tokenID
+	}
+	
+	if typeStr, ok := claims["type"].(string); ok {
+		payload.Type = typeStr
+	}
+	
+	if scopes, ok := claims["scopes"].([]interface{}); ok {
+		scopeStrings := make([]string, len(scopes))
+		for i, scope := range scopes {
+			scopeStrings[i] = fmt.Sprintf("%v", scope)
+		}
+		payload.Scopes = scopeStrings
+	}
+	
+	if iat, ok := claims["iat"].(float64); ok {
+		payload.IssuedAt = int64(iat)
+	}
+	
+	if nbf, ok := claims["nbf"].(float64); ok {
+		payload.NotBefore = int64(nbf)
+	}
+	
+	if exp, ok := claims["exp"].(float64); ok {
+		payload.ExpiresAt = int64(exp)
+	}
+	
+	if iss, ok := claims["iss"].(string); ok {
+		payload.Issuer = iss
+	}
+	
+	if aud, ok := claims["aud"].(string); ok {
+		payload.Audience = aud
 	}
 
 	// Check if token is revoked
-	exists, err := p.redisClient.Exists(fmt.Sprintf("platform_token:%s", tokenID))
+	ctx := context.Background()
+	tokenExists, err := p.redisClient.Exists(ctx, fmt.Sprintf("platform_token:%s", payload.TokenID)).Result()
 	if err != nil {
 		return nil, fmt.Errorf("redis error: %w", err)
 	}
-
-	if !exists {
-		return &TokenValidationResult{
-			IsValid: false,
-			Error:   "token has been revoked",
-		}, nil
+	
+	if tokenExists == 0 {
+		return nil, fmt.Errorf("token has been revoked")
 	}
 
-	// Create payload
-	payload := &types.PlatformTokenPayload{
-		TenantID:      tenantID,
-		SecretVersion: int(getFloatClaim(claims, "secret_version")),
-		TokenID:       tokenID,
-		Type:          "platform",
-		Scopes:        getStringArrayClaim(claims, "scopes"),
-		IssuedAt:      int64(getFloatClaim(claims, "iat")),
-		NotBefore:     int64(getFloatClaim(claims, "nbf")),
-		ExpiresAt:     int64(getFloatClaim(claims, "exp")),
-		Issuer:        getStringClaim(claims, "iss"),
-		Audience:      getStringClaim(claims, "aud"),
-	}
-
-	return &TokenValidationResult{
-		IsValid: true,
-		Payload: payload,
-	}, nil
+	return payload, nil
 }
 
 // validateProjectToken validates project token structure, secret version, and revocation
