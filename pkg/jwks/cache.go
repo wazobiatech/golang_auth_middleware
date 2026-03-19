@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -18,12 +19,12 @@ import (
 
 // JWK represents a JSON Web Key
 type JWK struct {
-	Kty string `json:"kty"` // Key Type
-	Use string `json:"use"` // Public Key Use
-	Kid string `json:"kid"` // Key ID
-	N   string `json:"n"`   // RSA modulus
-	E   string `json:"e"`   // RSA exponent
-	Alg string `json:"alg"` // Algorithm
+	Kty string   `json:"kty"`           // Key Type
+	Use string   `json:"use"`           // Public Key Use
+	Kid string   `json:"kid"`           // Key ID
+	N   string   `json:"n"`             // RSA modulus
+	E   string   `json:"e"`             // RSA exponent
+	Alg string   `json:"alg"`           // Algorithm
 	X5c []string `json:"x5c,omitempty"` // X.509 Certificate Chain
 }
 
@@ -210,7 +211,8 @@ func (c *Cache) fetchAndCache(jwksUri, path, cacheKey string) (*KeyStore, error)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s - %s", resp.StatusCode, resp.Status, string(body))
 	}
 
 	// Parse JWKS response

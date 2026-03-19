@@ -53,7 +53,7 @@ func loadConfig() *Config {
 		SignatureSharedSecret: getEnv("SIGNATURE_SHARED_SECRET", ""),
 
 		// Redis configuration
-		RedisURL:      getEnv("REDIS_URL", "redis://localhost:6379"),
+		RedisURL:      getEnv("REDIS_URL", "localhost:6379"),
 		RedisPassword: getEnv("REDIS_PASSWORD", ""),
 		RedisDB:       getEnvAsInt("REDIS_DB", 0),
 

@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/wazobiatech/auth-middleware-go/pkg/auth"
-	"github.com/wazobiatech/auth-middleware-go/pkg/types"
 )
 
 // Simple HTTP server demonstrating user JWT authentication
@@ -22,7 +21,7 @@ func main() {
 		}
 
 		// User is authenticated, return profile
-		response := map[string]interface{}{
+		_ = map[string]interface{}{
 			"message": "User authenticated successfully",
 			"user": map[string]interface{}{
 				"uuid":        user.UUID,

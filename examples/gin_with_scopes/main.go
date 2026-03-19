@@ -4,7 +4,7 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
-	"github.com/wazobiatech/auth-middleware-go/pkg/adapters/gin as authGin"
+	authGin "github.com/wazobiatech/auth-middleware-go/pkg/adapters/gin"
 )
 
 // Gin example with scope-based authorization

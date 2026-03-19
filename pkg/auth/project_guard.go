@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,9 +23,9 @@ type ProjectAuthMiddleware struct {
 	serviceJwksCacheKey string
 	jwksCacheTTL        time.Duration
 	serviceName         string
-	jwksCache          *jwks.Cache
-	redisClient        *redis.Client
-	serviceClient      *client.ServiceClient
+	jwksCache           *jwks.Cache
+	redisClient         *redis.Client
+	serviceClient       *client.ServiceClient
 }
 
 // NewProjectAuthMiddleware creates a new project authentication middleware
@@ -121,7 +122,7 @@ func (p *ProjectAuthMiddleware) injectPlatformContext(req *types.AuthenticatedRe
 // injectProjectContext adds project token context to the request
 func (p *ProjectAuthMiddleware) injectProjectContext(req *types.AuthenticatedRequest, payload *types.ProjectTokenPayload) error {
 	logger := utils.NewLogger("project-auth")
-	
+
 	logger.Info("Injecting project context", map[string]interface{}{
 		"tenant_id":        payload.TenantID,
 		"token_id":         payload.TokenID,
@@ -293,78 +294,13 @@ func (p *ProjectAuthMiddleware) validateToken(token string) (*TokenValidationRes
 	}
 }
 
-// validatePlatformToken validates platform token structure and checks for revocation
-func (p *ProjectAuthMiddleware) validatePlatformToken(token *jwt.Token) (*types.PlatformTokenPayload, error) {
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok || !token.Valid {
-		return nil, fmt.Errorf("invalid token claims")
-	}
-
-	payload := &types.PlatformTokenPayload{}
-	
-	// Extract claims
-	if tenantID, ok := claims["tenant_id"].(string); ok {
-		payload.TenantID = tenantID
-	}
-	
-	if secretVersion, ok := claims["secret_version"].(float64); ok {
-		payload.SecretVersion = int(secretVersion)
-	}
-	
-	if tokenID, ok := claims["token_id"].(string); ok {
-		payload.TokenID = tokenID
-	}
-	
-	if typeStr, ok := claims["type"].(string); ok {
-		payload.Type = typeStr
-	}
-	
-	if scopes, ok := claims["scopes"].([]interface{}); ok {
-		scopeStrings := make([]string, len(scopes))
-		for i, scope := range scopes {
-			scopeStrings[i] = fmt.Sprintf("%v", scope)
-		}
-		payload.Scopes = scopeStrings
-	}
-	
-	if iat, ok := claims["iat"].(float64); ok {
-		payload.IssuedAt = int64(iat)
-	}
-	
-	if nbf, ok := claims["nbf"].(float64); ok {
-		payload.NotBefore = int64(nbf)
-	}
-	
-	if exp, ok := claims["exp"].(float64); ok {
-		payload.ExpiresAt = int64(exp)
-	}
-	
-	if iss, ok := claims["iss"].(string); ok {
-		payload.Issuer = iss
-	}
-	
-	if aud, ok := claims["aud"].(string); ok {
-		payload.Audience = aud
-	}
-
-	// Check if token is revoked
-	ctx := context.Background()
-	tokenExists, err := p.redisClient.Exists(ctx, fmt.Sprintf("platform_token:%s", payload.TokenID)).Result()
-	if err != nil {
-		return nil, fmt.Errorf("redis error: %w", err)
-	}
-	
-	if tokenExists == 0 {
-		return nil, fmt.Errorf("token has been revoked")
-	}
-
-	return payload, nil
-}
-
 // validateProjectToken validates project token structure, secret version, and revocation
 func (p *ProjectAuthMiddleware) validateProjectToken(claims jwt.MapClaims) (*TokenValidationResult, error) {
 	// Validate structure
 	tenantID, ok1 := claims["tenant_id"].(string)
+	if !ok1 || tenantID == "" {
+		tenantID, ok1 = claims["project_uuid"].(string)
+	}
 	tokenID, ok2 := claims["token_id"].(string)
 
 	if !ok1 || !ok2 || tenantID == "" || tokenID == "" {
@@ -390,17 +326,17 @@ func (p *ProjectAuthMiddleware) validateProjectToken(claims jwt.MapClaims) (*Tok
 		}, nil
 	}
 
-	// Check if token is revoked
-	exists, err := p.redisClient.Exists(fmt.Sprintf("project_token:%s", tokenID))
-	if err != nil {
-		return nil, fmt.Errorf("redis error: %w", err)
-	}
-
-	if !exists {
-		return &TokenValidationResult{
-			IsValid: false,
-			Error:   "token has been revoked",
-		}, nil
+	// Check if token is revoked (only if Redis is connected)
+	if p.redisClient.IsConnected() {
+		exists, err := p.redisClient.Exists(fmt.Sprintf("project_token:%s", tokenID))
+		if err != nil {
+			log.Printf("Warning: Redis error checking revocation: %v", err)
+		} else if !exists {
+			return &TokenValidationResult{
+				IsValid: false,
+				Error:   "token has been revoked",
+			}, nil
+		}
 	}
 
 	// Create payload
@@ -460,6 +396,44 @@ func (p *ProjectAuthMiddleware) validateServiceToken(claims jwt.MapClaims) (*Tok
 	}, nil
 }
 
+// validatePlatformToken validates platform token structure
+func (p *ProjectAuthMiddleware) validatePlatformToken(claims jwt.MapClaims) (*TokenValidationResult, error) {
+	// Validate structure
+	tenantID, ok1 := claims["tenant_id"].(string)
+	if !ok1 || tenantID == "" {
+		tenantID, ok1 = claims["project_uuid"].(string)
+	}
+	tokenID, ok2 := claims["token_id"].(string)
+
+	if !ok1 || !ok2 || tenantID == "" || tokenID == "" {
+		return &TokenValidationResult{
+			IsValid: false,
+			Error:   "invalid platform token structure",
+		}, nil
+	}
+
+	// Check secret version (optional for platform tokens)
+	secretVersion := int(getFloatClaim(claims, "secret_version"))
+
+	payload := &types.PlatformTokenPayload{
+		TenantID:      tenantID,
+		SecretVersion: secretVersion,
+		TokenID:       tokenID,
+		Type:          "platform",
+		Scopes:        getStringArrayClaim(claims, "scopes"),
+		IssuedAt:      int64(getFloatClaim(claims, "iat")),
+		NotBefore:     int64(getFloatClaim(claims, "nbf")),
+		ExpiresAt:     int64(getFloatClaim(claims, "exp")),
+		Issuer:        getStringClaim(claims, "iss"),
+		Audience:      getStringClaim(claims, "aud"),
+	}
+
+	return &TokenValidationResult{
+		IsValid: true,
+		Payload: payload,
+	}, nil
+}
+
 // getPublicKeyFromCache retrieves RSA public key from cached JWKS with auto-refresh on key miss
 func (p *ProjectAuthMiddleware) getPublicKeyFromCache(token string) (interface{}, error) {
 	// Extract kid from JWT header
@@ -490,7 +464,10 @@ func (p *ProjectAuthMiddleware) getPublicKeyFromCache(token string) (interface{}
 		// Cache per tenant - each tenant gets its own cache
 		tenantID, ok := payload["tenant_id"].(string)
 		if !ok || tenantID == "" {
-			return nil, fmt.Errorf("missing tenant_id in token payload")
+			tenantID, ok = payload["project_uuid"].(string)
+		}
+		if !ok || tenantID == "" {
+			return nil, fmt.Errorf("missing tenant_id or project_uuid in token payload")
 		}
 		cacheKey = fmt.Sprintf("jwks_cache:%s", tenantID)
 		jwksPath = fmt.Sprintf("auth/projects/%s/.well-known/jwks.json", tenantID)
@@ -565,7 +542,7 @@ func (p *ProjectAuthMiddleware) decodeJwtPayload(token string) (map[string]inter
 // getCurrentSecretVersion gets current secret version from Redis (cached by Mercury)
 func (p *ProjectAuthMiddleware) getCurrentSecretVersion(tenantID string) (int, error) {
 	cacheKey := fmt.Sprintf("tenant_secret_version:%s", tenantID)
-	
+
 	cachedVersion, err := p.redisClient.Get(cacheKey)
 	if err != nil {
 		// If key doesn't exist, return 0 to allow validation

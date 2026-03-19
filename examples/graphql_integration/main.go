@@ -4,7 +4,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/wazobiatech/auth-middleware-go/pkg/auth"
 	"github.com/wazobiatech/auth-middleware-go/pkg/types"

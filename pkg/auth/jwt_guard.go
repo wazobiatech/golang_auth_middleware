@@ -28,7 +28,7 @@ type JwtAuthMiddleware struct {
 // NewJwtAuthMiddleware creates a new JWT authentication middleware instance
 func NewJwtAuthMiddleware() *JwtAuthMiddleware {
 	config := utils.GetConfig()
-	
+
 	jwksCache := jwks.NewCache()
 	redisClient := redis.NewClient()
 
@@ -43,9 +43,13 @@ func NewJwtAuthMiddleware() *JwtAuthMiddleware {
 func (j *JwtAuthMiddleware) Authenticate(req *http.Request) (*types.AuthUser, error) {
 	authHeader := req.Header.Get("Authorization")
 	if authHeader == "" {
+		authHeader = req.Header.Get("x-project-token")
+	}
+
+	if authHeader == "" {
 		return nil, &types.AuthError{
 			Code:    types.ErrCodeMissingHeader,
-			Message: "No authorization header provided",
+			Message: "No authorization header provided (Authorization or x-project-token)",
 		}
 	}
 
@@ -98,7 +102,11 @@ func (j *JwtAuthMiddleware) decodeJWTTokenForTenantId(rawJwtToken string) (strin
 
 	tenantID, ok := payload["tenant_id"].(string)
 	if !ok {
-		return "", nil // tenant_id not found or not a string
+		// Try project_uuid as fallback
+		tenantID, ok = payload["project_uuid"].(string)
+		if !ok {
+			return "", nil // neither tenant_id nor project_uuid found
+		}
 	}
 
 	return tenantID, nil
@@ -108,13 +116,13 @@ func (j *JwtAuthMiddleware) decodeJWTTokenForTenantId(rawJwtToken string) (strin
 func (j *JwtAuthMiddleware) getJwksUriAndPath(tenantId string) (string, string) {
 	config := utils.GetConfig()
 	domain := config.MercuryBaseURL
-	
+
 	log.Printf("JWKS Debug - MERCURY_BASE_URL: %s", domain)
 	log.Printf("JWKS Debug - tenantId: %s", tenantId)
-	
+
 	path := fmt.Sprintf("auth/projects/%s/.well-known/jwks.json", tenantId)
 	uri := fmt.Sprintf("%s/%s", domain, path)
-	
+
 	log.Printf("JWKS Debug - Constructed URI: %s", uri)
 	return uri, path
 }
@@ -176,7 +184,7 @@ func (j *JwtAuthMiddleware) createTokenCacheKey(rawToken string) string {
 // cacheValidatedToken stores validated token in Redis
 func (j *JwtAuthMiddleware) cacheValidatedToken(payload *types.JwtPayload, rawToken string) error {
 	cacheKey := j.createTokenCacheKey(rawToken)
-	
+
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
@@ -191,7 +199,7 @@ func (j *JwtAuthMiddleware) cacheValidatedToken(payload *types.JwtPayload, rawTo
 // getCachedToken retrieves validated token from Redis cache
 func (j *JwtAuthMiddleware) getCachedToken(rawToken string) (*types.JwtPayload, error) {
 	cacheKey := j.createTokenCacheKey(rawToken)
-	
+
 	cachedPayload, err := j.redisClient.Get(cacheKey)
 	if err != nil {
 		return nil, err // Cache miss or error
@@ -245,6 +253,7 @@ func (j *JwtAuthMiddleware) validate(rawToken string, publicKey *rsa.PublicKey) 
 	})
 
 	if err != nil {
+		log.Printf("Token validation failed: %v", err)
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
 
@@ -312,6 +321,11 @@ func (j *JwtAuthMiddleware) validate(rawToken string, publicKey *rsa.PublicKey) 
 		return nil, fmt.Errorf("invalid JWT payload structure: missing user UUID")
 	}
 
+	tenantID := getStringClaim(claims, "tenant_id")
+	if tenantID == "" {
+		tenantID = getStringClaim(claims, "project_uuid")
+	}
+
 	// Create payload for caching
 	payload := &types.JwtPayload{
 		Sub: struct {
@@ -323,7 +337,7 @@ func (j *JwtAuthMiddleware) validate(rawToken string, publicKey *rsa.PublicKey) 
 			Email: email,
 			Name:  name,
 		},
-		TenantID:    getStringClaim(claims, "tenant_id"),
+		TenantID:    tenantID,
 		ProjectUUID: getStringClaim(claims, "project_uuid"),
 		Permissions: getStringArrayClaim(claims, "permissions"),
 		Type:        getStringClaim(claims, "type"),
