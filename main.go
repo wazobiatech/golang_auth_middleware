@@ -1,155 +1,216 @@
-// Package authgo provides comprehensive JWT authentication middleware for Go microservices
-// It supports multiple token types (platform, project, user, service), JWKS validation,
-// Redis caching, and integrations with popular Go web frameworks.
-package authgo
+// Package authmiddleware provides authentication middleware for Go applications
+// compatible with the Mercury authentication service.
+//
+// This package provides:
+//   - JWT authentication for user tokens
+//   - Project/Platform/Service token authentication
+//   - Framework-specific adapters (Gin, Echo, Fiber, Chi, net/http)
+//   - GraphQL authentication helpers
+//   - Redis-backed caching
+//   - JWKS key management
+//
+// Basic usage with net/http:
+//
+//	package main
+//
+//	import (
+//	    "net/http"
+//	    authmiddleware "github.com/wazobiatech/auth-middleware-go"
+//	)
+//
+//	func main() {
+//	    // JWT authentication
+//	    http.Handle("/protected", authmiddleware.JWTMiddleware(http.HandlerFunc(handler)))
+//
+//	    // Project authentication
+//	    http.Handle("/api/", authmiddleware.ProjectMiddleware("my-service")(http.HandlerFunc(handler)))
+//
+//	    http.ListenAndServe(":8080", nil)
+//	}
+//
+package authmiddleware
 
 import (
 	"github.com/wazobiatech/auth-middleware-go/pkg/auth"
+	"github.com/wazobiatech/auth-middleware-go/pkg/client"
+	"github.com/wazobiatech/auth-middleware-go/pkg/graphql"
+	"github.com/wazobiatech/auth-middleware-go/pkg/jwks"
+	"github.com/wazobiatech/auth-middleware-go/pkg/middleware"
+	"github.com/wazobiatech/auth-middleware-go/pkg/redis"
 	"github.com/wazobiatech/auth-middleware-go/pkg/types"
 	"github.com/wazobiatech/auth-middleware-go/pkg/utils"
-	
+
 	// Framework adapters
-	"github.com/wazobiatech/auth-middleware-go/pkg/adapters/gin"
-	
-	// Core packages - re-exported for convenience
-	"github.com/wazobiatech/auth-middleware-go/pkg/client"
-	"github.com/wazobiatech/auth-middleware-go/pkg/jwks"
-	"github.com/wazobiatech/auth-middleware-go/pkg/redis"
+	echoAdapter "github.com/wazobiatech/auth-middleware-go/pkg/adapters/echo"
+	fiberAdapter "github.com/wazobiatech/auth-middleware-go/pkg/adapters/fiber"
+	chiAdapter "github.com/wazobiatech/auth-middleware-go/pkg/adapters/chi"
+	ginAdapter "github.com/wazobiatech/auth-middleware-go/pkg/adapters/gin"
+	nethttpAdapter "github.com/wazobiatech/auth-middleware-go/pkg/adapters/nethttp"
 )
 
-// Re-export core types for easier importing
-type (
-	// Authentication types
-	AuthUser              = types.AuthUser
-	AuthenticatedRequest  = types.AuthenticatedRequest
-	PlatformContext       = types.PlatformContext
-	ProjectContext        = types.ProjectContext
-	ServiceContext        = types.ServiceContext
-	AuthError             = types.AuthError
+// Re-export types
+ type (
+	 AuthUser            = types.AuthUser
+	 AuthenticatedRequest = types.AuthenticatedRequest
+	 PlatformContext     = types.PlatformContext
+	 ProjectContext      = types.ProjectContext
+	 ServiceContext      = types.ServiceContext
+	 PlatformTokenPayload = types.PlatformTokenPayload
+	 ProjectTokenPayload  = types.ProjectTokenPayload
+	 ServiceTokenPayload  = types.ServiceTokenPayload
+	 UserTokenPayload     = types.UserTokenPayload
+	 JwtPayload          = types.JwtPayload
+	 AuthError           = types.AuthError
+ )
 
-	// Token payload types
-	PlatformTokenPayload  = types.PlatformTokenPayload
-	ProjectTokenPayload   = types.ProjectTokenPayload
-	UserTokenPayload      = types.UserTokenPayload
-	ServiceTokenPayload   = types.ServiceTokenPayload
-	JwtPayload           = types.JwtPayload // Deprecated
+ // Re-export auth errors
+ const (
+	 ErrCodeInvalidToken      = types.ErrCodeInvalidToken
+	 ErrCodeExpiredToken      = types.ErrCodeExpiredToken
+	 ErrCodeRevokedToken      = types.ErrCodeRevokedToken
+	 ErrCodeInsufficientScope = types.ErrCodeInsufficientScope
+	 ErrCodeMissingHeader     = types.ErrCodeMissingHeader
+	 ErrCodeInvalidIssuer     = types.ErrCodeInvalidIssuer
+	 ErrCodeInvalidAudience   = types.ErrCodeInvalidAudience
+	 ErrCodeJWKSFetchError    = types.ErrCodeJWKSFetchError
+	 ErrCodeRedisError        = types.ErrCodeRedisError
+ )
 
-	// Core middleware
-	JwtAuthMiddleware     = auth.JwtAuthMiddleware
-	ProjectAuthMiddleware = auth.ProjectAuthMiddleware
+ // Re-export main types and constructors
+ var (
+	 NewJwtAuthMiddleware    = auth.NewJwtAuthMiddleware
+	 NewProjectAuthMiddleware = auth.NewProjectAuthMiddleware
+	 NewAuthHelper           = graphql.NewAuthHelper
+	 NewServiceClient        = client.NewServiceClient
+	 NewCache                = jwks.NewCache
+	 NewKeyStore             = jwks.NewKeyStore
+	 NewClient               = redis.NewClient
+	 NewLogger               = utils.NewLogger
+	 GetConfig               = utils.GetConfig
+	 UpdateConfig            = utils.UpdateConfig
+	 PrintConfig             = utils.PrintConfig
+ )
 
-	// Clients and utilities
-	ServiceClient         = client.ServiceClient
-	RedisClient           = redis.Client
-	JWKSCache            = jwks.Cache
-	Config               = utils.Config
-)
+ // net/http adapters
+ var (
+	 // JWTMiddleware wraps a handler with JWT authentication
+	 JWTMiddleware = nethttpAdapter.JWTMiddleware
+	 // ProjectMiddleware creates project authentication middleware
+	 ProjectMiddleware = nethttpAdapter.ProjectMiddleware
+	 // RequireScope creates scope checking middleware
+	 RequireScope = nethttpAdapter.RequireScope
+	 // OptionalJWTMiddleware creates optional JWT authentication middleware
+	 OptionalJWTMiddleware = nethttpAdapter.OptionalJWTMiddleware
+	 // OptionalProjectMiddleware creates optional project authentication middleware
+	 OptionalProjectMiddleware = nethttpAdapter.OptionalProjectMiddleware
+	 // Chain chains multiple middleware together
+	 Chain = nethttpAdapter.Chain
+ )
 
-// Error constants - re-exported for convenience
-const (
-	ErrCodeInvalidToken      = types.ErrCodeInvalidToken
-	ErrCodeExpiredToken      = types.ErrCodeExpiredToken
-	ErrCodeRevokedToken      = types.ErrCodeRevokedToken
-	ErrCodeInsufficientScope = types.ErrCodeInsufficientScope
-	ErrCodeMissingHeader     = types.ErrCodeMissingHeader
-	ErrCodeInvalidIssuer     = types.ErrCodeInvalidIssuer
-	ErrCodeInvalidAudience   = types.ErrCodeInvalidAudience
-	ErrCodeJWKSFetchError    = types.ErrCodeJWKSFetchError
-	ErrCodeRedisError        = types.ErrCodeRedisError
-)
+ // Gin adapters
+ var (
+	 // GinJWTMiddleware returns Gin JWT middleware
+	 GinJWTMiddleware = ginAdapter.JWTMiddleware
+	 // GinProjectMiddleware returns Gin project middleware
+	 GinProjectMiddleware = ginAdapter.ProjectMiddleware
+	 // GinRequireScope returns Gin scope middleware
+	 GinRequireScope = ginAdapter.RequireScope
+	 // GinOptionalJWTMiddleware returns optional Gin JWT middleware
+	 GinOptionalJWTMiddleware = ginAdapter.OptionalJWTMiddleware
+	 // GinOptionalProjectMiddleware returns optional Gin project middleware
+	 GinOptionalProjectMiddleware = ginAdapter.OptionalProjectMiddleware
+	 // GinGetAuthUser extracts user from Gin context
+	 GinGetAuthUser = ginAdapter.GetAuthUser
+	 // GinGetPlatformContext extracts platform from Gin context
+	 GinGetPlatformContext = ginAdapter.GetPlatformContext
+	 // GinGetProjectContext extracts project from Gin context
+	 GinGetProjectContext = ginAdapter.GetProjectContext
+	 // GinGetServiceContext extracts service from Gin context
+	 GinGetServiceContext = ginAdapter.GetServiceContext
+ )
 
-// Core authentication functions - convenience wrappers
+ // Echo adapters
+ var (
+	 // EchoJWTMiddleware returns Echo JWT middleware
+	 EchoJWTMiddleware = echoAdapter.JWTMiddleware
+	 // EchoProjectMiddleware returns Echo project middleware
+	 EchoProjectMiddleware = echoAdapter.ProjectMiddleware
+	 // EchoRequireScope returns Echo scope middleware
+	 EchoRequireScope = echoAdapter.RequireScope
+	 // EchoOptionalJWTMiddleware returns optional Echo JWT middleware
+	 EchoOptionalJWTMiddleware = echoAdapter.OptionalJWTMiddleware
+	 // EchoOptionalProjectMiddleware returns optional Echo project middleware
+	 EchoOptionalProjectMiddleware = echoAdapter.OptionalProjectMiddleware
+	 // EchoGetAuthUser extracts user from Echo context
+	 EchoGetAuthUser = echoAdapter.GetAuthUser
+	 // EchoGetPlatformContext extracts platform from Echo context
+	 EchoGetPlatformContext = echoAdapter.GetPlatformContext
+	 // EchoGetProjectContext extracts project from Echo context
+	 EchoGetProjectContext = echoAdapter.GetProjectContext
+	 // EchoGetServiceContext extracts service from Echo context
+	 EchoGetServiceContext = echoAdapter.GetServiceContext
+ )
 
-// NewJwtAuthMiddleware creates a new JWT authentication middleware
-func NewJwtAuthMiddleware() *JwtAuthMiddleware {
-	return auth.NewJwtAuthMiddleware()
-}
+ // Fiber adapters
+ var (
+	 // FiberJWTMiddleware returns Fiber JWT middleware
+	 FiberJWTMiddleware = fiberAdapter.JWTMiddleware
+	 // FiberProjectMiddleware returns Fiber project middleware
+	 FiberProjectMiddleware = fiberAdapter.ProjectMiddleware
+	 // FiberRequireScope returns Fiber scope middleware
+	 FiberRequireScope = fiberAdapter.RequireScope
+	 // FiberOptionalJWTMiddleware returns optional Fiber JWT middleware
+	 FiberOptionalJWTMiddleware = fiberAdapter.OptionalJWTMiddleware
+	 // FiberOptionalProjectMiddleware returns optional Fiber project middleware
+	 FiberOptionalProjectMiddleware = fiberAdapter.OptionalProjectMiddleware
+	 // FiberGetAuthUser extracts user from Fiber context
+	 FiberGetAuthUser = fiberAdapter.GetAuthUser
+	 // FiberGetPlatformContext extracts platform from Fiber context
+	 FiberGetPlatformContext = fiberAdapter.GetPlatformContext
+	 // FiberGetProjectContext extracts project from Fiber context
+	 FiberGetProjectContext = fiberAdapter.GetProjectContext
+	 // FiberGetServiceContext extracts service from Fiber context
+	 FiberGetServiceContext = fiberAdapter.GetServiceContext
+ )
 
-// NewProjectAuthMiddleware creates a new project authentication middleware
-func NewProjectAuthMiddleware(serviceName string) *ProjectAuthMiddleware {
-	return auth.NewProjectAuthMiddleware(serviceName)
-}
+ // Chi adapters
+ var (
+	 // ChiJWTMiddleware returns Chi JWT middleware
+	 ChiJWTMiddleware = chiAdapter.JWTMiddleware
+	 // ChiProjectMiddleware returns Chi project middleware
+	 ChiProjectMiddleware = chiAdapter.ProjectMiddleware
+	 // ChiRequireScope returns Chi scope middleware
+	 ChiRequireScope = chiAdapter.RequireScope
+	 // ChiOptionalJWTMiddleware returns optional Chi JWT middleware
+	 ChiOptionalJWTMiddleware = chiAdapter.OptionalJWTMiddleware
+	 // ChiOptionalProjectMiddleware returns optional Chi project middleware
+	 ChiOptionalProjectMiddleware = chiAdapter.OptionalProjectMiddleware
+	 // ChiGetAuthUser extracts user from Chi context
+	 ChiGetAuthUser = chiAdapter.GetAuthUser
+	 // ChiGetPlatformContext extracts platform from Chi context
+	 ChiGetPlatformContext = chiAdapter.GetPlatformContext
+	 // ChiGetProjectContext extracts project from Chi context
+	 ChiGetProjectContext = chiAdapter.GetProjectContext
+	 // ChiGetServiceContext extracts service from Chi context
+	 ChiGetServiceContext = chiAdapter.GetServiceContext
+ )
 
-// NewServiceClient creates a new service client for Mercury API communication
-func NewServiceClient() *ServiceClient {
-	return client.NewServiceClient()
-}
+ // GraphQL helpers
+ var (
+	 // GraphQLGetCurrentUser extracts user from GraphQL context
+	 GraphQLGetCurrentUser = graphql.GetCurrentUser
+	 // GraphQLGetPlatformContext extracts platform from GraphQL context
+	 GraphQLGetPlatformContext = graphql.GetPlatformContext
+	 // GraphQLGetProjectContext extracts project from GraphQL context
+	 GraphQLGetProjectContext = graphql.GetProjectContext
+	 // GraphQLGetServiceContext extracts service from GraphQL context
+	 GraphQLGetServiceContext = graphql.GetServiceContext
+	 // GraphQLWithHTTPRequest adds HTTP request to GraphQL context
+	 GraphQLWithHTTPRequest = graphql.WithHTTPRequest
+ )
 
-// NewRedisClient creates a new Redis client
-func NewRedisClient() *RedisClient {
-	return redis.NewClient()
-}
-
-// NewJWKSCache creates a new JWKS cache
-func NewJWKSCache() *JWKSCache {
-	return jwks.NewCache()
-}
-
-// Configuration functions
-
-// GetConfig returns the current configuration
-func GetConfig() *Config {
-	return utils.GetConfig()
-}
-
-// UpdateConfig updates configuration at runtime
-func UpdateConfig(updates map[string]interface{}) {
-	utils.UpdateConfig(updates)
-}
-
-// PrintConfig prints the current configuration (masking secrets)
-func PrintConfig() {
-	utils.PrintConfig()
-}
-
-// Logging functions
-
-// NewLogger creates a new structured logger
-func NewLogger(service string) *utils.Logger {
-	return utils.NewLogger(service)
-}
-
-// Framework-specific middleware exports
-
-// Gin middleware
-var (
-	// GinJWTMiddleware is the Gin JWT middleware
-	GinJWTMiddleware = gin.JWTMiddleware
-	
-	// GinProjectMiddleware is the Gin project middleware
-	GinProjectMiddleware = gin.ProjectMiddleware
-	
-	// GinRequireScope is the Gin scope validation middleware
-	GinRequireScope = gin.RequireScope
-	
-	// GinOptionalJWTMiddleware is the optional Gin JWT middleware
-	GinOptionalJWTMiddleware = gin.OptionalJWTMiddleware
-	
-	// GinOptionalProjectMiddleware is the optional Gin project middleware
-	GinOptionalProjectMiddleware = gin.OptionalProjectMiddleware
-	
-	// Gin context helpers
-	GinGetAuthUser              = gin.GetAuthUser
-	GinGetPlatformContext       = gin.GetPlatformContext
-	GinGetProjectContext        = gin.GetProjectContext
-	GinGetServiceContext        = gin.GetServiceContext
-	GinGetAuthenticatedRequest  = gin.GetAuthenticatedRequest
-	GinMustGetAuthUser          = gin.MustGetAuthUser
-	GinMustGetProjectContext    = gin.MustGetProjectContext
-)
-
-// Package information
-const (
-	Version = "1.0.0"
-	Name    = "@wazobiatech/auth-middleware-go"
-)
-
-// GetVersion returns the package version
-func GetVersion() string {
-	return Version
-}
-
-// GetPackageName returns the package name
-func GetPackageName() string {
-	return Name
-}
+ // Middleware aliases for backward compatibility
+ var (
+	 ProjectAuthMiddleware = middleware.NewProjectAuthMiddleware
+	 JwtAuthMiddleware     = middleware.NewJwtAuthMiddleware
+ )

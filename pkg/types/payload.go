@@ -174,3 +174,11 @@ const (
 	ErrCodeJWKSFetchError   = "JWKS_FETCH_ERROR"
 	ErrCodeRedisError       = "REDIS_ERROR"
 )
+
+// NewAuthError creates a new AuthError
+func NewAuthError(code, message string) *AuthError {
+	return &AuthError{
+		Code:    code,
+		Message: message,
+	}
+}
