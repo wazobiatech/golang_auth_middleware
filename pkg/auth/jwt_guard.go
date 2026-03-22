@@ -243,8 +243,10 @@ func (j *JwtAuthMiddleware) validate(rawToken string, publicKey *rsa.PublicKey) 
 		}, nil
 	}
 
-	// Parse and verify the token
-	token, err := jwt.Parse(rawToken, func(token *jwt.Token) (interface{}, error) {
+	// Parse and verify the token.
+	// Allow 10 seconds of clock skew between services.
+	parser := jwt.NewParser(jwt.WithLeeway(10 * time.Second))
+	token, err := parser.Parse(rawToken, func(token *jwt.Token) (interface{}, error) {
 		// Verify signing method
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
