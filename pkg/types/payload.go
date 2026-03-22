@@ -62,18 +62,18 @@ type UserTokenPayload struct {
 	IssuedAt  int64    `json:"iat"`
 	NotBefore int64    `json:"nbf"`
 	ExpiresAt int64    `json:"exp"`
-	Issuer    string   `json:"iss"` // mercury.{domain}.com
-	Audience  string   `json:"aud"` // *.{domain}.com
+	Issuer    string   `json:"iss"`           // mercury.{domain}.com
+	Audience  string   `json:"aud"`           // *.{domain}.com
 	JTI       string   `json:"jti,omitempty"` // JWT ID for revocation tracking
 }
 
 // ServiceTokenPayload represents service-to-service tokens
 type ServiceTokenPayload struct {
-	Type        string `json:"type"`         // "service"
+	Type        string `json:"type"` // "service"
 	ClientID    string `json:"client_id"`
 	ServiceName string `json:"service_name"`
-	Scope       string `json:"scope"`  // space-separated scopes
-	JTI         string `json:"jti"`    // JWT ID
+	Scope       string `json:"scope"` // space-separated scopes
+	JTI         string `json:"jti"`   // JWT ID
 	IssuedAt    int64  `json:"iat"`
 	NotBefore   int64  `json:"nbf"`
 	ExpiresAt   int64  `json:"exp"`
@@ -147,6 +147,7 @@ type AuthUser struct {
 	Permissions []string `json:"permissions,omitempty"`
 	Role        string   `json:"role,omitempty"`
 	TokenID     string   `json:"token_id,omitempty"`
+	TokenType   string   `json:"token_type,omitempty"`
 }
 
 // ==================== ERROR TYPES ====================
@@ -164,13 +165,13 @@ func (e *AuthError) Error() string {
 
 // Common error codes
 const (
-	ErrCodeInvalidToken     = "INVALID_TOKEN"
-	ErrCodeExpiredToken     = "EXPIRED_TOKEN"
-	ErrCodeRevokedToken     = "REVOKED_TOKEN"
+	ErrCodeInvalidToken      = "INVALID_TOKEN"
+	ErrCodeExpiredToken      = "EXPIRED_TOKEN"
+	ErrCodeRevokedToken      = "REVOKED_TOKEN"
 	ErrCodeInsufficientScope = "INSUFFICIENT_SCOPE"
-	ErrCodeMissingHeader    = "MISSING_HEADER"
-	ErrCodeInvalidIssuer    = "INVALID_ISSUER"
-	ErrCodeInvalidAudience  = "INVALID_AUDIENCE"
-	ErrCodeJWKSFetchError   = "JWKS_FETCH_ERROR"
-	ErrCodeRedisError       = "REDIS_ERROR"
+	ErrCodeMissingHeader     = "MISSING_HEADER"
+	ErrCodeInvalidIssuer     = "INVALID_ISSUER"
+	ErrCodeInvalidAudience   = "INVALID_AUDIENCE"
+	ErrCodeJWKSFetchError    = "JWKS_FETCH_ERROR"
+	ErrCodeRedisError        = "REDIS_ERROR"
 )
