@@ -240,8 +240,10 @@ func (p *ProjectAuthMiddleware) validateToken(token string) (*TokenValidationRes
 		}, nil
 	}
 
-	// Verify JWT with RSA public key
-	parsedToken, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+	// Verify JWT with RSA public key.
+	// Allow 10 seconds of clock skew between Iris and Mercury.
+	parser := jwt.NewParser(jwt.WithLeeway(10 * time.Second))
+	parsedToken, err := parser.Parse(token, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
