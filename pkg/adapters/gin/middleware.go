@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/wazobiatech/auth-middleware-go/pkg/auth"
-	"github.com/wazobiatech/auth-middleware-go/pkg/types"
-	"github.com/wazobiatech/auth-middleware-go/pkg/utils"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/auth"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/types"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/utils"
 )
 
 // Middleware keys for storing auth data in Gin context
