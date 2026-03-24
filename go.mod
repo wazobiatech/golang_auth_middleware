@@ -1,4 +1,4 @@
-module github.com/wazobiatech/auth-middleware-go
+module github.com/wazobiatech/golang_auth_middleware
 
 go 1.25.0
 
