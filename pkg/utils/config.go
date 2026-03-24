@@ -52,10 +52,10 @@ func loadConfig() *Config {
 		MercuryBaseURL:        getEnv("MERCURY_BASE_URL", "http://localhost:4000"),
 		SignatureSharedSecret: getEnv("SIGNATURE_SHARED_SECRET", ""),
 
-		// Redis configuration
-		RedisURL:      getEnv("REDIS_URL", "localhost:6379"),
-		RedisPassword: getEnv("REDIS_PASSWORD", ""),
-		RedisDB:       getEnvAsInt("REDIS_DB", 0),
+		// Redis configuration — prefer AUTH_REDIS_* to avoid conflicts with app Redis
+		RedisURL:      getEnvFallback("AUTH_REDIS_HOST", "REDIS_URL", "localhost:6379"),
+		RedisPassword: getEnvFallback("AUTH_REDIS_PASSWORD", "REDIS_PASSWORD", ""),
+		RedisDB:       getEnvAsInt("AUTH_REDIS_DB", getEnvAsInt("REDIS_DB", 0)),
 
 		// Service credentials
 		ClientID:     getEnv("CLIENT_ID", ""),
@@ -98,6 +98,17 @@ func validateConfig(cfg *Config) {
 	if cfg.ClientSecret == "" {
 		log.Println("Warning: CLIENT_SECRET is not set")
 	}
+}
+
+// getEnvFallback returns the first non-empty env var, falling back to defaultValue
+func getEnvFallback(primary, secondary, defaultValue string) string {
+	if v := os.Getenv(primary); v != "" {
+		return v
+	}
+	if v := os.Getenv(secondary); v != "" {
+		return v
+	}
+	return defaultValue
 }
 
 // getEnv gets environment variable with a default fallback
