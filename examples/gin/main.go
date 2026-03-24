@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
-	authgo "github.com/wazobiatech/auth-middleware-go"
+	authgo "github.com/wazobiatech/golang_auth_middleware"
 )
 
 func main() {

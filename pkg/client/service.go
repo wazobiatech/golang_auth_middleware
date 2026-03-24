@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/wazobiatech/auth-middleware-go/pkg/utils"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/utils"
 )
 
 // ServiceClient handles communication with Mercury service for authentication operations

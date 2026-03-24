@@ -4,17 +4,17 @@
 package authgo
 
 import (
-	"github.com/wazobiatech/auth-middleware-go/pkg/auth"
-	"github.com/wazobiatech/auth-middleware-go/pkg/types"
-	"github.com/wazobiatech/auth-middleware-go/pkg/utils"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/auth"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/types"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/utils"
 	
 	// Framework adapters
-	"github.com/wazobiatech/auth-middleware-go/pkg/adapters/gin"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/adapters/gin"
 	
 	// Core packages - re-exported for convenience
-	"github.com/wazobiatech/auth-middleware-go/pkg/client"
-	"github.com/wazobiatech/auth-middleware-go/pkg/jwks"
-	"github.com/wazobiatech/auth-middleware-go/pkg/redis"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/client"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/jwks"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/redis"
 )
 
 // Re-export core types for easier importing

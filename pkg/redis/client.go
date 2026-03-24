@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/wazobiatech/auth-middleware-go/pkg/utils"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/utils"
 )
 
 // Client wraps Redis client with connection management and health checking

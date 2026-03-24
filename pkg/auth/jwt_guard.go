@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/wazobiatech/auth-middleware-go/pkg/jwks"
-	"github.com/wazobiatech/auth-middleware-go/pkg/redis"
-	"github.com/wazobiatech/auth-middleware-go/pkg/types"
-	"github.com/wazobiatech/auth-middleware-go/pkg/utils"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/jwks"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/redis"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/types"
+	"github.com/wazobiatech/golang_auth_middleware/pkg/utils"
 )
 
 // JwtAuthMiddleware provides advanced JWT authentication with JWKS support
